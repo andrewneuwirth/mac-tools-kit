@@ -1,5 +1,6 @@
 // The family icon plate (design system › AppIcon), so every tool's icon has the same geometry.
-//   swift icon.swift <accent hex> <SF Symbol name> <out.icns>
+//   swift icon.swift <accent hex> <SF Symbol name | glyph.svg> <out.icns>
+// A glyph .svg is drawn on the 1024 canvas as-is, so it uses the plate's coordinates and its own colours.
 // Plate: 1024 canvas, 824 tile at inset 100, radius 185; accent sunk into ground #0e0f12
 // (62% top → 22% bottom); white sheen .14→0 over the top half; 10pt inner stroke white .14;
 // one white glyph at ~50% of the tile.
@@ -7,7 +8,7 @@ import AppKit
 
 let args = CommandLine.arguments
 guard args.count == 4, let hex = UInt32(args[1].trimmingCharacters(in: ["#"]), radix: 16) else {
-    print("usage: swift icon.swift <accent hex> <SF Symbol name> <out.icns>"); exit(1)
+    print("usage: swift icon.swift <accent hex> <SF Symbol name | glyph.svg> <out.icns>"); exit(1)
 }
 let symbolName = args[2], out = URL(fileURLWithPath: args[3])
 
@@ -29,6 +30,10 @@ func render(_ px: Int) -> Data {
     let plate = NSBezierPath(roundedRect: tile, xRadius: 185 * s, yRadius: 185 * s)
     NSGradient(starting: mix(hex, 0.22), ending: mix(hex, 0.62))!.draw(in: plate, angle: 90)
 
+    if symbolName.hasSuffix(".svg") {
+        guard let svg = NSImage(contentsOfFile: symbolName) else { print("can't read \(symbolName)"); exit(1) }
+        svg.draw(in: NSRect(x: 0, y: 0, width: px, height: px))
+    }
     // Glyph, white, centred.
     let config = NSImage.SymbolConfiguration(pointSize: 420 * s, weight: .medium)
         .applying(.init(paletteColors: [.white]))

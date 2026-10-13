@@ -43,11 +43,15 @@ public struct UsageSnapshot: Codable, Equatable, Sendable {
 public enum LoginItem {
     public static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
 
-    public static func set(_ enabled: Bool) {
+    /// false when macOS refused (callers may beep, as Usage Rings does).
+    @discardableResult
+    public static func set(_ enabled: Bool) -> Bool {
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            return true
         } catch {
             NSLog("Open at Login: \(error.localizedDescription)")
+            return false
         }
     }
 }
