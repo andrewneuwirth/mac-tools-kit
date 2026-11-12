@@ -19,3 +19,21 @@ import Testing
     #expect(snap.chatgpt?.primary?.percent == 13)
     #expect(snap.chatgpt?.secondary == nil)
 }
+
+@Test func usageWriteSkipsUnchanged() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("usage-write-test.json")
+    try? FileManager.default.removeItem(at: url)
+    let reading = UsageSnapshot.Reading(short: .init(percent: 3, resetsAt: nil), long: nil, note: nil, failed: false, stale: false)
+    #expect(UsageSnapshot(claude: reading, chatgpt: nil, updated: Date()).write(to: url))
+    #expect(!UsageSnapshot(claude: reading, chatgpt: nil, updated: Date()).write(to: url))
+    #expect(UsageSnapshot.read(from: url)?.claude?.primary?.percent == 3)
+}
+
+@Test func projectLinksRoundTrip() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("projects-test.json")
+    let links = [ProjectLink(title: "Reelforge", url: "http://127.0.0.1:3000", path: "Creative/reelforge", start: "pnpm dev")]
+    ProjectLinks.save(links, to: url)
+    #expect(ProjectLinks.load(from: url) == links)
+    try Data("{not json".utf8).write(to: url)
+    #expect(ProjectLinks.load(from: url) == nil)
+}
