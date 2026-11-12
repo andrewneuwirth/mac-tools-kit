@@ -14,3 +14,7 @@ git clone git@github.com:andrewneuwirth/mac-tools-kit.git Kit
 ```
 
 `swift test` runs its checks.
+
+`tools/BuildJanitor` holds BuildJanitor, the Claude Code hook and nightly janitor that keep agent Xcode
+builds and simulators from filling the disk (Python, see its README). Its hooks call it through the
+symlink `~/Developer/Mac-Tools/BuildJanitor -> Kit/tools/BuildJanitor`; recreate that link on a new Mac.

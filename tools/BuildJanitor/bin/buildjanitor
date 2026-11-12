@@ -1,0 +1,211 @@
+#!/usr/bin/python3
+"""buildjanitor: clean up what Claude Code agents leave behind from Xcode builds.
+
+DRY RUN BY DEFAULT: prints what it would delete and the total. Deletes only with --apply.
+
+  1. agent-build slots (~/Library/Caches/agent-builds/*/slot-*) untouched for 2 days
+     and not locked by a running build
+  2. stray DerivedData folders (dd, dd2, DerivedData-loc, build/device, ...) under
+     ~/Developer and /private/tmp untouched for 2 days
+  3. simulators in the agent registry (simulators.json) not booted for 7 days
+  4. unavailable simulators (`xcrun simctl delete unavailable`)
+
+Never deletes a simulator that is not in the registry: those are listed under
+"Needs your OK" with the command to delete each one by hand.
+"""
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+HOME = Path.home()
+ROOT = HOME / "Library/Caches/agent-builds"
+REGISTRY = ROOT / "simulators.json"
+DEVICES = HOME / "Library/Developer/CoreSimulator/Devices"
+# (folder, how deep to look). ~/Developer/<project>/<a>/<b>/build/dd1 is depth 5;
+# /private/tmp/claude-501/<project>/<session>/scratchpad/dd is depth 5.
+SCAN_ROOTS = [(HOME / "Developer", 5), (Path("/private/tmp"), 6)]
+SKIP_DIRS = {".git", "node_modules", "Pods", ".build", ".swiftpm", "Carthage"}
+NAME_RE = re.compile(r"^(dd[\w.-]*|deriveddata[\w.-]*|derived[\w.-]*)$", re.I)
+SLOT_DAYS, STRAY_DAYS, SIM_DAYS, WARN_GB = 2, 2, 7, 40
+DAY = 86400
+
+
+def size(p):
+    out = subprocess.run(["du", "-sk", str(p)], capture_output=True, text=True).stdout
+    return int(out.split()[0]) * 1024 if out.strip() else 0
+
+
+def gb(b):
+    return f"{b / 1e9:6.1f} GB"
+
+
+def days_since(*paths):
+    """Days since the newest mtime among these paths (missing ones are ignored)."""
+    times = [p.stat().st_mtime for p in paths if p.exists()]
+    return (time.time() - max(times)) / DAY if times else 1e9
+
+
+def try_lock(path):
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except BlockingIOError:
+        os.close(fd)
+        return None
+
+
+def looks_like_derived_data(p):
+    return (p / "Build").is_dir() and any((p / x).exists() for x in
+                                          ("Logs", "ModuleCache.noindex", "Index.noindex", "info.plist", "SourcePackages"))
+
+
+def stale_slots():
+    found = []
+    for lock in sorted(ROOT.glob("*/slot-*.lock")):
+        slot = lock.with_suffix("")
+        if not slot.is_dir():
+            continue
+        age = days_since(lock, slot)
+        if age < SLOT_DAYS:
+            continue
+        fd = try_lock(lock)
+        if fd is None:  # a build is running in it right now
+            continue
+        os.close(fd)
+        found.append((slot, age))
+    return found
+
+
+def stray_derived_data():
+    found = []
+    for top, max_depth in SCAN_ROOTS:
+        if not top.is_dir():
+            continue
+        base = len(top.parts)
+        for dirpath, dirnames, _ in os.walk(top):
+            here = Path(dirpath)
+            keep = []
+            for d in dirnames:
+                p = here / d
+                if d in SKIP_DIRS or p.is_symlink():
+                    continue
+                named = NAME_RE.match(d) or here.name.lower() == "build" or top.name == "tmp"
+                if named and looks_like_derived_data(p):
+                    # shortcut: "untouched" = newest of the folder, its build logs and info.plist,
+                    # not every file inside (too slow on multi-GB trees).
+                    age = days_since(p, p / "Logs/Build", p / "info.plist", p / "Build/Products")
+                    if age >= STRAY_DAYS:
+                        found.append((p, age))
+                    continue  # never descend into a DerivedData folder
+                if len(p.parts) - base < max_depth:
+                    keep.append(d)
+            dirnames[:] = keep
+    return found
+
+
+def simulators():
+    try:
+        out = subprocess.run(["xcrun", "simctl", "list", "devices", "-j"],
+                             capture_output=True, text=True, timeout=60, check=True).stdout
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"(skipping simulators: {e})")
+        return None
+    return [d for devs in json.loads(out)["devices"].values() for d in devs]
+
+
+def days_since_boot(dev):
+    """lastBootedAt from simctl when present, else the device folder's mtime."""
+    stamp = dev.get("lastBootedAt")
+    if stamp:
+        try:
+            return (time.time() - datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()) / DAY
+        except ValueError:
+            pass
+    return days_since(DEVICES / dev["udid"] / "device.plist", DEVICES / dev["udid"])
+
+
+def load_registry():
+    try:
+        return json.loads(REGISTRY.read_text())
+    except (OSError, ValueError):
+        return []
+
+
+def section(title, rows):
+    print(f"\n{title}")
+    if not rows:
+        print("  (none)")
+    for b, text in rows:
+        print(f"  {gb(b)}  {text}")
+    return sum(b for b, _ in rows)
+
+
+def main():
+    apply = "--apply" in sys.argv[1:]
+    print(f"BuildJanitor {time.strftime('%Y-%m-%d %H:%M')}: "
+          + ("DELETING" if apply else "dry run, nothing deleted (pass --apply to delete)"))
+    verb = "Deleted" if apply else "Would free"
+    freed = 0
+
+    rows = []
+    for slot, age in stale_slots():
+        b = size(slot)
+        rows.append((b, f"{slot}  ({age:.0f} days)"))
+        if apply:
+            fd = try_lock(slot.with_suffix(".lock"))
+            if fd is not None:  # re-check: a build may have started since the scan
+                shutil.rmtree(slot, ignore_errors=True)
+                os.close(fd)
+    freed += section(f"Agent build slots untouched for {SLOT_DAYS}+ days:", rows)
+
+    rows = []
+    for p, age in stray_derived_data():
+        rows.append((size(p), f"{p}  ({age:.0f} days)"))
+        if apply:
+            shutil.rmtree(p, ignore_errors=True)
+    freed += section(f"Stray DerivedData folders untouched for {STRAY_DAYS}+ days:", rows)
+
+    devices = simulators()
+    if devices is not None:
+        registry = load_registry()
+        mine = {e["udid"] for e in registry}
+        old, unavailable, ask = [], [], []
+        for d in devices:
+            u, label = d["udid"], f"\"{d.get('name')}\" {d['udid']}"
+            b = size(DEVICES / u) if (DEVICES / u).exists() else 0
+            age = days_since_boot(d)
+            if not d.get("isAvailable", True):
+                unavailable.append((b, f"{label}  ({d.get('availabilityError', 'unavailable')})"))
+            elif u not in mine:
+                ask.append((b, f"{label}  last booted {age:.0f} days ago  -> xcrun simctl delete {u}"))
+            elif d.get("state") != "Booted" and age >= SIM_DAYS:
+                old.append((b, f"{label}  last booted {age:.0f} days ago"))
+                if apply:
+                    subprocess.run(["xcrun", "simctl", "delete", u])
+        freed += section(f"Agent simulators not booted for {SIM_DAYS}+ days:", old)
+        freed += section("Unavailable simulators (xcrun simctl delete unavailable):", unavailable)
+        if apply:
+            subprocess.run(["xcrun", "simctl", "delete", "unavailable"])
+            gone = {e["udid"] for e in registry} - {d["udid"] for d in simulators() or devices}
+            if gone:
+                REGISTRY.write_text(json.dumps([e for e in registry if e["udid"] not in gone], indent=2))
+        section("Needs your OK (simulators not created through the agent registry, never auto-deleted):",
+                sorted(ask, reverse=True))
+
+    print(f"\n{verb}: {gb(freed).strip()}")
+    total = size(ROOT) if ROOT.exists() else 0
+    print(f"Agent builds total: {gb(total).strip()} in {ROOT}")
+    if total > WARN_GB * 1e9:
+        print(f"WARNING: agent builds are over {WARN_GB} GB")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+"""agent-xcodebuild: xcodebuild with the same arguments, but DerivedData goes to a
+shared, reused slot: ~/Library/Caches/agent-builds/<project>/slot-<n> (3 per project).
+
+A slot is held with flock() on slot-<n>.lock for as long as the build runs. The kernel
+drops the lock when this process exits for any reason (failure, Ctrl-C, kill -9), so a
+dead build never leaves a stale lock behind and there is no PID file to reclaim.
+"""
+import fcntl
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path.home() / "Library/Caches/agent-builds"
+SLOTS = 3
+XCODEBUILD = "/usr/bin/xcodebuild"  # the xcode-select shim; never PATH, so this can't call itself
+# These don't build anything, so they run untouched and never wait for a slot.
+PASSTHROUGH = {"-version", "-showsdks", "-list", "-help", "-usage", "-license",
+               "-checkFirstLaunchStatus", "-runFirstLaunch", "-exportArchive",
+               "-downloadPlatform", "-downloadAllPlatforms", "-importPlatform"}
+
+
+def eprint(*a):
+    print("agent-xcodebuild:", *a, file=sys.stderr, flush=True)
+
+
+def project_slug(args, cwd):
+    name = Path(cwd).name
+    for flag in ("-workspace", "-project"):
+        if flag in args and args.index(flag) + 1 < len(args):
+            name = Path(args[args.index(flag) + 1].rstrip("/")).stem
+            break
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "default"
+
+
+def split_derived_data(args):
+    """Drop every -derivedDataPath <p>; return (other args, the last p asked for)."""
+    rest, asked, i = [], None, 0
+    while i < len(args):
+        if args[i] == "-derivedDataPath" and i + 1 < len(args):
+            asked = args[i + 1]
+            i += 2
+            continue
+        rest.append(args[i])
+        i += 1
+    return rest, asked
+
+
+def try_lock(path):
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)  # non-inheritable by default (PEP 446)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except BlockingIOError:
+        os.close(fd)
+        return None
+
+
+def preferred_slot(project_dir, asked, cwd):
+    """If the agent's own path already points at one of our slots, reuse that slot,
+    so build-for-testing followed by test-without-building lands in the same place."""
+    if not asked:
+        return None
+    m = re.fullmatch(re.escape(str(project_dir.resolve())) + r"/slot-(\d+)",
+                     str((Path(cwd) / asked).resolve()))
+    return int(m.group(1)) if m else None
+
+
+def acquire_slot(project_dir, prefer=None, wait=True, slots=SLOTS, poll=2.0):
+    """Lock the first free slot (the preferred one first). Returns (n, fd) or (None, None)."""
+    project_dir.mkdir(parents=True, exist_ok=True)
+    order = list(range(1, slots + 1))
+    if prefer in order:
+        order.remove(prefer)
+        order.insert(0, prefer)
+    announced = False
+    while True:
+        for n in order:
+            lock = project_dir / f"slot-{n}.lock"
+            fd = try_lock(lock)
+            if fd is not None:
+                os.utime(lock)  # buildjanitor's "last used" clock
+                return n, fd
+        if not wait:
+            return None, None
+        if not announced:
+            eprint(f"all {slots} slots for {project_dir.name} are busy, waiting for one to free up...")
+            announced = True
+        time.sleep(poll)
+
+
+def link_asked_path(asked, dd, cwd):
+    """Point the agent's own -derivedDataPath at the slot so paths it computes
+    (build/dd1/Build/Products/...) still work. Never touches a real folder."""
+    p = Path(cwd) / asked
+    try:
+        if p.is_symlink():
+            p.unlink()
+        elif p.exists():
+            eprint(f"{asked} already exists as a real folder, left alone; this build's products are in {dd}")
+            return
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.symlink_to(dd)
+    except OSError as e:
+        eprint(f"could not link {asked} -> {dd}: {e}")
+
+
+def main():
+    args, cwd = sys.argv[1:], os.getcwd()
+    if any(a in PASSTHROUGH for a in args):
+        os.execv(XCODEBUILD, [XCODEBUILD, *args])
+    rest, asked = split_derived_data(args)
+    project_dir = ROOT / project_slug(args, cwd)
+
+    if "-showBuildSettings" in args:
+        # No build happens, so no lock. With the agent's own path we keep it: it is the
+        # symlink to the slot its real build used. shortcut: without one we report slot-1,
+        # which may differ from the slot the next build gets; agents should pass a path.
+        dd = asked or str(project_dir / "slot-1")
+        os.execv(XCODEBUILD, [XCODEBUILD, "-derivedDataPath", dd, *rest])
+
+    n, fd = acquire_slot(project_dir, preferred_slot(project_dir, asked, cwd))
+    dd = project_dir / f"slot-{n}"
+    if asked:
+        link_asked_path(asked, dd, cwd)
+    eprint(f"DerivedData -> {dd} (slot {n} of {SLOTS} for {project_dir.name})")
+
+    # A child (not exec) so XCBBuildService and friends never inherit the lock fd and
+    # keep it alive after the build. shortcut: if this wrapper is SIGKILLed the lock frees
+    # while xcodebuild keeps running; rare, upgrade to a process-group check if it bites.
+    proc = subprocess.Popen([XCODEBUILD, "-derivedDataPath", str(dd), *rest])
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda s, _f: proc.send_signal(s))
+    rc = proc.wait()
+    os.utime(project_dir / f"slot-{n}.lock")
+    os.close(fd)
+    sys.exit(128 - rc if rc < 0 else rc)
+
+
+if __name__ == "__main__":
+    main()
