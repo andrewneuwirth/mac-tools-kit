@@ -55,6 +55,7 @@ public extension Color {
     static let mtTextViewer = Color.dynamic(light: 0x0550ae, dark: 0x79b8ff)
     static let mtLinkChoice = Color(hex: 0xfa5c5c)
     static let mtCommandCenter = Color(hex: 0x1fb6c9)
+    static let mtVitals = Color(hex: 0x8bc34a)
 
     init(hex: UInt32, alpha: Double = 1) {
         self.init(.sRGB, red: Double(hex >> 16 & 0xff) / 255, green: Double(hex >> 8 & 0xff) / 255,
