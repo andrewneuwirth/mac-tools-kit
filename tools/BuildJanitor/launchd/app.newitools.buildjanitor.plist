@@ -4,7 +4,7 @@
   <key>Label</key><string>app.newitools.buildjanitor</string>
   <key>ProgramArguments</key><array>
     <string>/usr/bin/python3</string>
-    <string>/Users/YOU/Developer/Mac-Tools/BuildJanitor/bin/buildjanitor</string>
+    <string>/Users/YOU/path/to/Kit/tools/BuildJanitor/bin/buildjanitor</string>
     <string>--apply</string>
   </array>
   <key>StartCalendarInterval</key><dict>

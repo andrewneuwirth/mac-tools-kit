@@ -127,7 +127,7 @@ def record_new_sims(data, cmd):
         return
     before = json.loads(snap.read_text())
     snap.unlink()
-    # shortcut: a diff, so a simulator the owner creates in Xcode during the same second is
+    # shortcut: a diff, so a simulator you create in Xcode during the same second is
     # also logged, and a run_in_background create that finishes later is missed.
     new = {u: name for u, name in sim_udids().items() if u not in before}
     if not new:

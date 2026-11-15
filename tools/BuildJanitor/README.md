@@ -33,23 +33,23 @@ Plain Python 3 (`/usr/bin/python3`, stdlib only).
 bin/buildjanitor              # dry run: lists what it would delete, nothing is touched
 ```
 
-## Install (after your OK)
+## Install
 
 ```sh
 chmod +x bin/agent-xcodebuild bin/buildjanitor hooks/xcodebuild_hook.py
 ```
 
-Merge into the `hooks` object of `~/.claude/settings.json` (keep the AgentNotify entries already there):
+Merge into the `hooks` object of `~/.claude/settings.json` (keep any hooks already there):
 
 ```json
 "PreToolUse": [
-  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/usr/bin/python3 /Users/YOU/Developer/Mac-Tools/BuildJanitor/hooks/xcodebuild_hook.py pre" } ] }
+  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/usr/bin/python3 /path/to/Kit/tools/BuildJanitor/hooks/xcodebuild_hook.py pre" } ] }
 ],
 "PostToolUse": [
-  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/usr/bin/python3 /Users/YOU/Developer/Mac-Tools/BuildJanitor/hooks/xcodebuild_hook.py post" } ] }
+  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/usr/bin/python3 /path/to/Kit/tools/BuildJanitor/hooks/xcodebuild_hook.py post" } ] }
 ],
 "PostToolUseFailure": [
-  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/usr/bin/python3 /Users/YOU/Developer/Mac-Tools/BuildJanitor/hooks/xcodebuild_hook.py post" } ] }
+  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "/usr/bin/python3 /path/to/Kit/tools/BuildJanitor/hooks/xcodebuild_hook.py post" } ] }
 ]
 ```
 
@@ -66,17 +66,17 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.newitools.buildjanit
 ## What buildjanitor looks at
 
 - **Agent build slots** `~/Library/Caches/agent-builds/*/slot-*`: deleted if untouched for 2+ days and not locked by a running build.
-- **Stray DerivedData** under `~/Developer` (5 levels deep) and `/private/tmp` (6 levels, covers agent scratchpads and `/tmp/ph-device`). A folder counts only if it has `Build/` plus `Logs`, `ModuleCache.noindex`, `Index.noindex`, `info.plist` or `SourcePackages`, and it is named `dd*`, `DerivedData*` or `derived*`, or sits in a `build/` folder, or is in /tmp. Deleted if untouched for 2+ days. Skips `.git`, `node_modules`, `Pods`, `.build` and symlinks. `~/Library/Developer/Xcode/DerivedData` (the owner's own Xcode) is never scanned.
+- **Stray DerivedData** under `~/Developer` (5 levels deep) and `/private/tmp` (6 levels, covers agent scratchpads and `/tmp/ph-device`). A folder counts only if it has `Build/` plus `Logs`, `ModuleCache.noindex`, `Index.noindex`, `info.plist` or `SourcePackages`, and it is named `dd*`, `DerivedData*` or `derived*`, or sits in a `build/` folder, or is in /tmp. Deleted if untouched for 2+ days. Skips `.git`, `node_modules`, `Pods`, `.build` and symlinks. `~/Library/Developer/Xcode/DerivedData` (your own Xcode builds) is never scanned.
 - **Agent simulators** (UDIDs in `simulators.json`): deleted if not booted for 7+ days.
 - **Unavailable simulators**: `xcrun simctl delete unavailable`.
-- **Needs your OK**: every other simulator, including the 25 that existed before the registry ("Demo · Phone", "Demo-UX-Audit-...", "demo-duo"), listed with size and a `xcrun simctl delete <udid>` line. Never deleted automatically.
+- **Needs your OK**: every other simulator (ones you made yourself, or that existed before the registry), listed with size and a `xcrun simctl delete <udid>` line. Never deleted automatically.
 - Prints the total for `~/Library/Caches/agent-builds` and warns above 40 GB.
 
 ## Limits
 
 - The hook sees only the Bash command text. Not rewritten: `xcodebuild` inside quotes (`bash -c '...'`, `"$(...)"`), `xcrun -sdk x xcodebuild`, `xargs xcodebuild`, and scripts that call xcodebuild themselves. The CLAUDE.md text below covers those.
 - `-showBuildSettings` without the agent's own `-derivedDataPath` reports slot-1, which may not be the slot its next build gets.
-- Simulators are logged by diffing the device list before and after the command, so a `run_in_background` create that finishes later is missed, and a simulator the owner creates in Xcode in that same moment gets logged too.
+- Simulators are logged by diffing the device list before and after the command, so a `run_in_background` create that finishes later is missed, and a simulator you create in Xcode in that same moment gets logged too.
 - If the wrapper itself gets `kill -9`, its slot frees while xcodebuild keeps running.
 - 3 slots per project name, shared across worktrees of the same project.
 
@@ -91,7 +91,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.newitools.buildjanit
   DerivedData folders (build/dd1, $SCRATCHPAD/dd, /tmp/...) and don't hide xcodebuild
   inside `bash -c` or scripts to get around it. Find products from the path the wrapper
   prints, or keep using your -derivedDataPath: it becomes a symlink to the slot.
-- Don't create or clone simulators unless the owner asks. Use an existing booted or
+- Don't create or clone simulators unless you ask. Use an existing booted or
   available one (`xcrun simctl list devices available`). If you must create one, do it
   from a plain Bash command (so it gets logged), and delete it when you're done.
 ```

@@ -1,20 +1,22 @@
 # Kit (MacToolsKit)
 
-The Mac Tools family's shared code: the design-system tokens in Swift (colours, spacing, radii,
+MacToolsKit: the shared code behind the newi tools Mac apps: the design-system tokens in Swift (colours, spacing, radii,
 motion, status, partner colours), the usage reading Pier writes, the project list Pier and Projects share, the Open at Login toggle, and the
-icon plate generator (`tools/icon.swift`). The design system itself:
-the design system
+icon plate generator (`tools/icon.swift`). The tokens mirror the newi tools design system; change a value there and here together.
 
-Pier and Projects (and the other Mac Tools) depend on it **by path** (`../Kit`), so on a new Mac clone it
-next to them, named `Kit`:
+The apps use a checkout next to them named `Kit` when there is one, otherwise SwiftPM fetches this repo. To work on
+Kit and an app together, clone it next to the app:
 
 ```sh
-cd ~/Developer/Mac-Tools
-git clone git@github.com:andrewneuwirth/mac-tools-kit.git Kit
+git clone https://github.com/andrewneuwirth/mac-tools-kit.git Kit
 ```
 
 `swift test` runs its checks.
 
 `tools/BuildJanitor` holds BuildJanitor, the Claude Code hook and nightly janitor that keep agent Xcode
-builds and simulators from filling the disk (Python, see its README). Its hooks call it through the
-symlink `~/Developer/Mac-Tools/BuildJanitor -> Kit/tools/BuildJanitor`; recreate that link on a new Mac.
+builds and simulators from filling the disk (Python, see its README). Point its hooks at your
+checkout's `tools/BuildJanitor` (or a symlink to it).
+
+## License
+
+[MIT](LICENSE). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security: [SECURITY.md](SECURITY.md).

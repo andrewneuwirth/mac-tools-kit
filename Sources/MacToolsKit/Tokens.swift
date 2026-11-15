@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 // Mirrors project/tokens.json in the "Mac Tools" design system
-// (the design system). Change a value there first, then here.
+// (the newi tools design system). Change a value there first, then here.
 
 public enum MT {
     public enum Space {
