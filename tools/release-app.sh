@@ -10,9 +10,10 @@ OUT=${2:-dist}
 PROFILE=${NOTARY_PROFILE:-notary}
 NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$APP/Contents/Info.plist" 2>/dev/null || basename "$APP" .app)
 VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
-IDENTITY=$(codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=\(Developer ID Application:.*\)$/\1/p' | head -1)
+IDENTITY=$(codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=\(Developer ID Application:.*\)$/\1/p' | sed -n 1p)
 [ -n "$IDENTITY" ] || { echo "$APP is not signed with a Developer ID Application identity" >&2; exit 1; }
-codesign -d --verbose=4 "$APP" 2>&1 | grep -q 'flags=.*runtime' || { echo "$APP lacks the hardened runtime" >&2; exit 1; }
+SIGNATURE=$(codesign -d --verbose=4 "$APP" 2>&1)   # captured first: grep -q on a pipe trips pipefail
+[[ "$SIGNATURE" == *"(runtime)"* ]] || { echo "$APP lacks the hardened runtime" >&2; exit 1; }
 
 mkdir -p "$OUT"
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
