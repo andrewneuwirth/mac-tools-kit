@@ -15,6 +15,7 @@ public final class AppUpdater: ObservableObject {
     @Published public private(set) var canCheck = false
     @Published public private(set) var lastChecked: Date?
     private var observations: [NSKeyValueObservation] = []
+    private let feedParameters = FeedParameters()   // Sparkle holds its delegate weakly
 
     /// True when Info.plist has both SUFeedURL and SUPublicEDKey.
     public static var isConfigured: Bool {
@@ -23,7 +24,7 @@ public final class AppUpdater: ObservableObject {
     }
 
     private init() {
-        controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+        controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: feedParameters, userDriverDelegate: nil)
         guard Self.isConfigured else { return }
         controller.startUpdater()
         observations = [
@@ -65,6 +66,19 @@ public final class AppUpdater: ObservableObject {
         guard let lastChecked else { return "Not checked yet" }
         if Date().timeIntervalSince(lastChecked) < 60 { return "Last checked just now" }
         return "Last checked " + lastChecked.formatted(.relative(presentation: .named))
+    }
+}
+
+/// Adds only the macOS version (major.minor) to each feed request, for the site's update-check counts.
+/// System profiling (SUEnableSystemProfiling: CPU, model, RAM) stays off.
+final class FeedParameters: NSObject, SPUUpdaterDelegate {
+    static var osVersion: String {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return "\(v.majorVersion).\(v.minorVersion)"
+    }
+
+    func feedParameters(for updater: SPUUpdater, sendingSystemProfile sendingProfile: Bool) -> [[String: String]] {
+        [["key": "osVersion", "value": Self.osVersion]]
     }
 }
 
