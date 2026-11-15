@@ -92,9 +92,11 @@ public struct CheckForUpdatesButton: View {
 }
 
 /// The Updates section for a grouped `Form`: the two automatic switches, when it last checked, and Check Now.
+/// `showsVersion: false` where the page already lists the version.
 public struct AppUpdateSettings: View {
     @ObservedObject private var updates = AppUpdater.shared
-    public init() {}
+    private let showsVersion: Bool
+    public init(showsVersion: Bool = true) { self.showsVersion = showsVersion }
     public var body: some View {
         Section("Updates") {
             Toggle("Check for updates automatically", isOn: $updates.automaticallyChecks)
@@ -103,7 +105,9 @@ public struct AppUpdateSettings: View {
             LabeledContent {
                 Button("Check Now") { updates.checkNow() }.disabled(!updates.canCheck)
             } label: {
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")")
+                if showsVersion {
+                    Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")")
+                }
                 Text(updates.lastCheckedText)
             }
         }

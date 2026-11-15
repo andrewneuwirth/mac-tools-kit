@@ -9,6 +9,10 @@ The apps update themselves with [Sparkle 2](https://sparkle-project.org). Kit ho
 - `tools/fetch-sparkle.sh`: Sparkle's command-line tools (pinned version and sha256) into `tools/sparkle/`.
 - `tools/appcast.py`: adds a release to an appcast (`appcast.py --self-check` tests it).
 
+Each feed request carries one parameter, `osVersion` (macOS major.minor), so the site can count checks by app
+version and macOS version (Sparkle adds the app version to the User-Agent). System profiling
+(`SUEnableSystemProfiling`) stays off; nothing else is sent.
+
 Sparkle's version is pinned in two places: `Package.swift` and `tools/fetch-sparkle.sh`. Change both together.
 
 ## The signing key
@@ -43,7 +47,7 @@ If the private key is lost, installed copies can't take signed updates any more;
    - SwiftUI: `CommandGroup(after: .appInfo) { CheckForUpdatesButton() }`
    - AppKit: `appMenu.addItem(AppUpdater.shared.menuItem())` after About.
    - Menu bar or accessory apps: put it in the status or right-click menu.
-5. **Settings**: `AppUpdateSettings()` inside a grouped `Form`. Apps with their own row style build the rows from
+5. **Settings**: `AppUpdateSettings()` inside a grouped `Form` (`showsVersion: false` where the page already shows it). Apps with their own row style build the rows from
    `AppUpdater.shared` (`automaticallyChecks`, `automaticallyDownloads`, `lastCheckedText`, `canCheck`, `checkNow()`).
 6. **build.sh**: after the executable and Info.plist are in the bundle, before the app is signed:
    ```sh
