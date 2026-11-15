@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="128" height="128" alt="Kit icon">
-
 # Kit (MacToolsKit)
 
 **The shared Swift code behind the newi tools Mac apps.**
