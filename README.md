@@ -45,6 +45,13 @@ git clone https://github.com/andrewneuwirth/mac-tools-kit.git Kit
 
 `swift test` runs its checks.
 
+## Automatic updates
+
+`MacToolsUpdates` is the Sparkle 2 updater the apps share: a "Check for Updates…" menu item, an Updates section for
+settings, and `tools/embed-sparkle.sh` for build.sh. `tools/release-app.sh` signs each DMG for Sparkle and writes the
+app's appcast when `APPCAST` and `DMG_URL` are set. The checklist for an app, and how to release: [docs/updates.md](docs/updates.md).
+`tools/fetch-sparkle.sh` downloads Sparkle's command-line tools (pinned, checksummed) into `tools/sparkle/`.
+
 ## Tokens at a glance
 
 Values from [`Sources/MacToolsKit/Tokens.swift`](Sources/MacToolsKit/Tokens.swift).

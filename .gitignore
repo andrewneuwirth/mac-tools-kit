@@ -6,3 +6,5 @@ build/
 config.local.env
 .claude/
 __pycache__/
+tools/sparkle/
+Package.resolved
