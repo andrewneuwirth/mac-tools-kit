@@ -68,7 +68,7 @@ If the private key is lost, installed copies can't take signed updates any more;
 ./build.sh --release
 APPCAST=../newitools-site/<page>/appcast.xml \
 DMG_URL=https://github.com/<owner>/<repo>/releases/download/v1.2.3/<App>-1.2.3.dmg \
-RELEASE_NOTES_URL=https://github.com/<owner>/<repo>/releases/tag/v1.2.3 \
+RELEASE_NOTES_URL=https://newitools.app/<page>/changelog/ \
   ../Kit/tools/release-app.sh build/<App>.app dist
 ```
 
@@ -78,6 +78,9 @@ RELEASE_NOTES_URL=https://github.com/<owner>/<repo>/releases/tag/v1.2.3 \
   same build replaces that item.
 - `DMG_URL` is where the DMG will be served: a GitHub release asset, or a file on the site
   (e.g. `https://newitools.app/<page>/download/<App>-1.2.3.dmg`).
+- `RELEASE_NOTES_URL` is the app's changelog page on the site (`https://newitools.app/<page>/changelog/`; Tars is
+  `/lab/tars/changelog/`). Add the new version to the top of that page in the same release: version, date and the
+  changes, newest first.
 - `RELEASE_NOTES="<p>…</p>"` puts notes inline instead of a link.
 
 Then publish in this order: upload the DMG (e.g. `gh release create v1.2.3 dist/<App>-1.2.3.dmg`), then deploy
