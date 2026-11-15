@@ -18,12 +18,16 @@ SIGNATURE=$(codesign -d --verbose=4 "$APP" 2>&1)   # captured first: grep -q on 
 mkdir -p "$OUT"
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 
-echo "==> Notarizing $NAME $VERSION (app)…"
-ditto -c -k --keepParent "$APP" "$WORK/app.zip"
-xcrun notarytool submit "$WORK/app.zip" --keychain-profile "$PROFILE" --wait
-xcrun stapler staple "$APP"
+echo "==> Notarizing ${NAME} ${VERSION} (app)..."
+if xcrun stapler validate "$APP" >/dev/null 2>&1; then
+  echo "    already notarized and stapled"
+else
+  ditto -c -k --keepParent "$APP" "$WORK/app.zip"
+  xcrun notarytool submit "$WORK/app.zip" --keychain-profile "$PROFILE" --wait
+  xcrun stapler staple "$APP"
+fi
 
-echo "==> Building the disk image…"
+echo "==> Building the disk image..."
 mkdir "$WORK/dmg"
 cp -R "$APP" "$WORK/dmg/"
 ln -s /Applications "$WORK/dmg/Applications"
@@ -32,7 +36,7 @@ rm -f "$DMG"
 hdiutil create -volname "$NAME" -srcfolder "$WORK/dmg" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
 
-echo "==> Notarizing $DMG…"
+echo "==> Notarizing ${DMG}..."
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
 xcrun stapler staple "$DMG"
 
